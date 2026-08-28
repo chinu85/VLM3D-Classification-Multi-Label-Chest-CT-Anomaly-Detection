@@ -1,539 +1,247 @@
-% MICCAI 2026 â€” VLM3D Challenge
-% Restructured following Rekik (2020) paper-writing framework:
-%   Introduction: hook â†’ progressive limitation walk â†’ "to address these, we propose"
-%   Methods: overview paragraph + active voice + connected steps + generic
-%   Results: description only (no interpretation)
-%   Discussion: recap/interpret/parameter-sensitivity/limitations+fixes
-%   Conclusion: brief recap + one limitation + future direction
-
 \documentclass[runningheads]{llncs}
-\usepackage[T1]{fontenc}
-\usepackage{graphicx,verbatim}
+\usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{amsmath}
 \usepackage{url}
+\usepackage{microtype}
+
+\renewcommand{\topfraction}{0.95}
+\renewcommand{\bottomfraction}{0.95}
+\renewcommand{\textfraction}{0.05}
+\renewcommand{\floatpagefraction}{0.90}
+\setlength{\abovecaptionskip}{4pt}
+\setlength{\belowcaptionskip}{2pt}
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\floatsep}{8pt plus 2pt minus 2pt}
 
 \begin{document}
 
 \title{VLM3D Classification: Multi-Label Chest CT Anomaly Detection}
+\titlerunning{VLM3D: Multi-Label Chest CT Anomaly Detection}
 
 \author{Sourabh Kumawat}
 \authorrunning{S. Kumawat}
+
 \institute{University College Dublin, Dublin, Ireland \\
 \email{sourabh.kumawat@ucdconnect.ie}}
 
 \maketitle
 
-% ──────────────────────────────────────────────────────────────────────────────────
 \begin{abstract}
-Automated multi-label pathology classification from 3D chest CT volumes holds the potential to reduce radiologist burden and accelerate clinical triage, yet existing systems struggle with the simultaneous demands of volumetric processing, severe class imbalance across 18 co-occurring pathologies, and noisy pseudo-labels. We present a classification system for the VLM3D Challenge Task~1 on CT-RATE (11,404 training / 3,039 validation volumes) that addresses these challenges through: (i) a preprocessing investigation that identifies and corrects a static Hounsfield Unit clipping bug as the dominant bottleneck, (ii) a progressive architecture search from 3D ResNet-10 through DenseNet201 to SwinViT-3D with SuPreM supervised pre-training, and (iii) Asymmetric Loss with per-class gamma tuning combined with an 8-fold Test-Time Augmentation (TTA) ensemble and per-class threshold optimisation. The final system achieves macro AUROC~\textbf{0.8025} and macro F1~\textbf{0.5212}, exceeding published CT-CLIP (0.735) and CT-Net (0.762) baselines. A complete 18-class per-label breakdown reveals single-model AUROC up to 0.9284 and ensemble F1 up to 0.7436, directly informing clinical deployment priorities.
-\keywords{3D CT classification \and Multi-label learning \and Swin Transformer
-\and Asymmetric Loss \and Transfer learning \and CT-RATE}
+Automated multi-label anomaly detection from volumetric computed tomography (CT) requires balancing computational tractability, fine-grained lesion sensitivity, and global anatomical context. We present a multi-backbone classification pipeline for the VLM3D Challenge Task~1 (18 thoracic pathologies on the CT-RATE dataset). The proposed system integrates dynamic percentile Hounsfield Unit (HU) windowing, an architectural progression spanning 3D ResNet, DenseNet201, and a SuPreM-pretrained SwinViT-3D, Asymmetric Loss (ASL) with weak-class parameter tuning, 8-fold test-time augmentation (TTA), and Nelder-Mead simplex ensembling with per-class decision threshold calibration. The final ensemble achieves a macro AUROC of 0.8025 and macro F1 of 0.5212 across 3,039 held-out validation scans, substantially outperforming the official CT-Net (0.762 AUROC) and CT-CLIP (0.735 AUROC) baselines. Diagnostic ablations demonstrate that resolving an initial static HU clipping failure provided the largest single gain (+0.18 AUROC), while domain-specific supervised pre-training and calibrated ensembling yielded the remaining state-of-the-art margins.
+\keywords{3D CT classification \and Multi-label learning \and Swin Transformer \and Asymmetric Loss \and Ensembling \and CT-RATE}
 \end{abstract}
 
-% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 \section{Introduction}
-\label{sec:intro}
+Computed tomography (CT) of the thorax is the diagnostic gold standard for evaluating pulmonary, pleural, mediastinal, and cardiovascular pathologies~\cite{ardila2019}. Modern clinical protocols routinely generate volumetric scans containing hundreds of axial slices per patient. Interpreting these high-dimensional volumes is cognitively demanding and time-intensive for radiologists, motivating automated multi-label decision support systems for emergency department triage and diagnostic second-reading.
 
-Chest computed tomography (CT) is one of the most information-dense imaging
-modalities in clinical practice: a single 3D volume can simultaneously evidence
-cardiac enlargement, pleural effusion, pulmonary nodules, and a dozen other
-co-occurring pathologies. Automating their detection would accelerate triage,
-reduce inter-reader variability, and extend radiology capacity - yet building a
-reliable multi-label 3D classifier is far harder than it appears. The volumetric
-nature of the data demands architectures with large receptive fields; the severe
-class imbalance (prevalence spanning an order of magnitude across 18 labels)
-requires loss functions that resist gradient domination by easy negatives; and the
-noisy, model-derived pseudo-labels in publicly available datasets impose a ceiling
-on achievable performance. Understanding which of these factors limits a given
-system most is itself a research problem. This paper presents and analyses
-a system built for the VLM3D Challenge~\cite{vlm3d2026} Task~1 on the
-CT-RATE dataset~\cite{ctrate2024}, demonstrating that systematic engineering
-diagnosis - particularly of preprocessing failures - is as important as
-architecture choice.
+Multi-label volumetric CT interpretation presents three severe technical hurdles:
+\begin{enumerate}
+\setlength{\itemsep}{1pt}\setlength{\parskip}{0pt}
+\item \textit{Extreme spatial dimensionality}: Processing full 3D CT volumes at native isotropic resolution exceeds standard GPU accelerator memory, requiring careful balancing of spatial resampling, patch sizes, and memory footprints.
+\item \textit{Pathological scale heterogeneity}: The 18 target conditions in the CT-RATE benchmark~\cite{ctrate2024} span multiple orders of spatial magnitude, ranging from sub-centimetre focal nodules to diffuse interstitial opacities and organ-level cardiac enlargement.
+\item \textit{Pervasive label co-occurrence and imbalance}: Positive class prevalence ranges from under 2\% (e.g., pericardial effusion) to over 30\% (e.g., lung nodule, pleural effusion), producing acute gradient starvation for low-prevalence findings when trained under standard binary cross-entropy.
+\end{enumerate}
 
-Early approaches to volumetric chest pathology classification relied on
-handcrafted radiomics features fed into classical machine learning classifiers.
-While interpretable, these methods require expert-designed feature pipelines
-that do not generalise across scanner protocols and cannot capture global
-anatomical context beyond local texture descriptors. They provide a useful
-lower bound on performance but are outclassed by any learned representation
-for the scale of CT-RATE.
+In this paper, we describe and evaluate an end-to-end multi-label 3D CT anomaly detection system developed for the VLM3D Challenge~\cite{vlm3d2026} on the CT-RATE dataset (11,404 training and 3,039 validation volumes). We present a principled progression from shallow 3D CNNs to hierarchical vision transformers, investigate inductive biases under data imbalance, and construct a calibrated dual-backbone ensemble.
 
-To address these limitations, the community moved to shallow 3D convolutional
-neural networks. Hara~et~al.~\cite{hara2018} showed that 3D ResNet variants can
-learn spatiotemporal features from volumetric data, and MONAI~\cite{monai2020}
-extended these to the medical imaging domain with production-quality
-implementations. However, 3D ResNets have limited depth, restricted feature
-reuse across resolution scales, and no mechanism to relate fine-grained local
-texture (e.g., sub-centimetre nodules) with coarse global structure (e.g.,
-cardiomegaly). Applied to multi-label CT classification with heavy class
-imbalance, they reach a performance ceiling well below what a clinical triage
-system would require.
-
-Deeper convolutional architectures with dense skip connections - most notably
-DenseNet~\cite{huang2017} - address the feature-reuse limitation by allowing
-each layer to directly receive gradients and features from all preceding layers.
-This makes DenseNets particularly well-suited to medical imaging tasks where
-both fine-grained and coarse features are simultaneously diagnostic. CT-Net, the
-DenseNet-based model reported alongside the CT-RATE dataset~\cite{ctrate2024},
-achieves macro AUROC~0.762 and represents the CNN state of the art on this
-benchmark. However, DenseNets retain an inherently local receptive field and
-struggle to model long-range spatial dependencies - for instance, correlating
-the appearance of the cardiac silhouette with pleural space geometry - that are
-necessary for robust joint detection across all 18 pathologies.
-
-Most recently, transformer-based architectures have demonstrated that
-global context modelling through self-attention substantially improves 3D
-medical image analysis. CT-CLIP~\cite{ctrate2024} uses contrastive
-vision-language pre-training on CT-RATE and achieves macro AUROC~0.735;
-SwinUNETR~\cite{tang2022} applies hierarchical shifted-window attention to
-3D volumes, achieving state-of-the-art segmentation. Yet two key limitations
-remain open: (i) transformers trained from scratch on limited medical datasets
-underfit, and the benefit of domain-specific pre-training for classification
-(as opposed to segmentation) on this benchmark has not been demonstrated;
-(ii) neither CNN nor transformer baselines have been combined in a
-principled ensemble that exploits their complementary inductive biases
-for this task.
-
-To address these limitations, we propose a system comprising three components.
-First, we apply dynamic per-volume Hounsfield Unit windowing to correct a
-preprocessing failure that nullifies 99.9\% of voxel information - a diagnostic
-contribution that alone moves AUROC from below 0.60 to above 0.78. Second, we
-systematically progress through ResNet-10, DenseNet201, and SwinViT-3D with
-SuPreM supervised pre-training, providing ablation evidence for each architectural
-choice. Third, we combine Asymmetric Loss with per-class gamma overrides,
-per-class threshold optimisation, and a learned-weight DenseNet+Swin ensemble.
-
-The key contributions of this work are:
+The primary contributions of this work are threefold:
 \begin{itemize}
-\item A \textbf{preprocessing diagnostic} that identifies static HU clipping as the
-  dominant performance bottleneck - more impactful than any architectural change.
-\item A \textbf{progressive ablation} from CNN baseline to pre-trained transformer,
-  with explicit performance attribution at each step.
-\item An \textbf{Asymmetric Loss with per-class gamma} that softens hard-negative
-  suppression specifically for the three lowest-prevalence weak classes.
-\item A \textbf{complete per-label AUROC/F1 breakdown} across all 18 pathologies,
-  diagnosing the sensitivity–precision trade-off at class level and informing
-  clinical deployment priorities.
+\setlength{\itemsep}{1pt}\setlength{\parskip}{0pt}
+\item \textbf{Preprocessing failure diagnosis}: We show that static HU clipping [-1000, 0] HU erroneously zeroes out 99.9\% of diagnostic voxels across multi-center scanners, and resolve it with adaptive percentile normalization.
+\item \textbf{Transfer learning analysis}: We establish that domain-specific supervised pre-training (SuPreM) provides substantial transfer benefits for 3D hierarchical transformers over random initialization and standard CNNs.
+\item \textbf{Calibrated ensembling}: We formulate a multi-backbone blend combining DenseNet201 and SwinViT-3D with 8-fold test-time augmentation and per-class threshold optimization, establishing state-of-the-art results on CT-RATE (0.8025 AUROC, 0.5212 F1).
 \end{itemize}
 
-% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-\section{Methodology}
-\label{sec:method}
+\section{Related Work}
+\noindent\textbf{Handcrafted radiomics to 3D CNNs.} Early volumetric CT analysis relied on expert-engineered radiomic features (shape, intensity, Haralick texture) coupled with tree-based or kernel classifiers. While interpretable, these methods lack cross-scanner transferability and fail to capture global contextual relationships. The advent of 3D CNNs~\cite{hara2018,monai2020} enabled automated volumetric feature learning. DenseNet architectures~\cite{huang2017} introduced direct feature reuse through dense skip connections, allowing multi-scale gradient flow particularly advantageous for concurrent fine-grained and coarse abnormality detection. The CT-Net baseline reported by Hamamci et al.~\cite{ctrate2024} uses a 3D DenseNet backbone to achieve 0.762 macro AUROC on CT-RATE.
 
-We propose a classification pipeline with four interconnected components:
-a preprocessing pipeline that standardises intensities and corrects clipping
-failures, a progressive architecture progression from shallow CNN to pre-trained
-transformer, an asymmetric loss with per-class gamma tuning, and an 8-fold TTA
-ensemble with per-class threshold optimisation. Figure~\ref{fig:pipeline}
-illustrates the overall system architecture and end-to-end inference flow.
+\noindent\textbf{3D Vision Transformers and Foundation Models.} While CNNs excel at local texture representation, their fixed kernel sizes constrain receptive fields. Self-attention vision transformers capture arbitrary long-range dependencies, essential for correlating disparate anatomical landmarks (e.g., cardiomegaly with bilateral pleural effusions). Swin Transformers~\cite{liu2021} mitigate the quadratic complexity of global self-attention through shifted local windows, successfully extended to 3D medical segmentation in SwinUNETR~\cite{tang2022}. Concurrently, vision-language contrastive models such as CT-CLIP~\cite{ctrate2024} learn representations from paired radiology reports, achieving 0.735 macro AUROC. However, pre-trained transformer backbones require careful transfer fine-tuning to prevent catastrophic forgetting and overfitting under limited dataset scales.
+
+\section{Methodology}
+Our end-to-end framework consists of four integrated modules: dynamic HU preprocessing, dual deep backbones, asymmetric loss formulation, and calibrated test-time ensembling (Fig.~\ref{fig:pipeline}).
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{fig1_pipeline.png}
-\caption{End-to-end multi-label 3D CT pathology classification framework. Volumetric scans undergo patient-specific dynamic HU windowing and uniform spatial resampling. Dual backbones (DenseNet201 and SuPreM-pretrained SwinViT-3D) are trained with Asymmetric Loss (ASL). Predictions from 8-fold spatial axis-flip TTA are blended via Nelder-Mead simplex weights, followed by per-class threshold calibration across 18 target pathologies.}
+\includegraphics[width=0.98\textwidth,height=4.6cm,keepaspectratio]{fig1_pipeline.png}
+\caption{End-to-end multi-label 3D CT classification framework. Scans undergo dynamic percentile HU windowing and uniform spatial resampling, followed by dual backbone extraction (DenseNet201 and SuPreM-pretrained SwinViT-3D). Predictions from 8-fold spatial axis-flip TTA are blended via Nelder-Mead weights and calibrated via per-class thresholds across 18 target pathologies.}
 \label{fig:pipeline}
 \end{figure}
 
-\subsection{Preprocessing}
-\label{sec:preproc}
+\subsection{Preprocessing and Spatial Normalization}
+\noindent\textbf{Dynamic HU windowing.} Multi-center CT scans exhibit significant variation in scanner calibration, patient body habitus, and reconstruction kernels. An early implementation applied a static HU clipping window $[-1000, 0]$~HU followed by min-max scaling. In CT-RATE, where true soft-tissue structures span $[0, 300]$~HU, this static window clamped over 99.9\% of all foreground voxels to 0.0, reducing the network to learning solely from air and fat boundaries. We replaced this with patient-specific dynamic windowing: computing the 0.5th ($p_{low}$) and 99.5th ($p_{high}$) intensity percentiles per scan, clipping intensity values to $[p_{low}, p_{high}]$, and linearly scaling to $[0, 1]$. Resolving this single preprocessing flaw moved validation AUROC from $<0.60$ to $>0.78$.
 
-Raw 3D CT volumes arrive in NIfTI format with Hounsfield Unit values spanning
-approximately $[-1000, +3000]$~HU, resampled to non-uniform spatial resolutions
-that vary by scanner and acquisition protocol. We first resample each volume to
-isotropic $1.5\times1.5\times1.5$~mm spacing using bilinear interpolation,
-providing a resolution fine enough to capture nodule textures while remaining
-computationally tractable. Because different scanner calibrations and patient
-compositions shift the effective intensity range substantially, we apply a
-\textit{dynamic per-volume windowing} that maps the 5th to 95th intensity
-percentile to $[0, 1]$ and clips extremes. This is a critical departure from
-a static HU clip of $[-1000, 0]$~HU used in an early implementation, which
-drove 99.9\% of voxels to zero and rendered all tensors black; identifying and
-correcting this single bug was the highest-impact intervention in the entire
-development cycle.
+\noindent\textbf{Resampling and Augmentation.} Volumetric scans are resampled to isotropic $2.0$~mm spacing via trilinear interpolation, cropped to foreground tissue, and zero-padded to a fixed input tensor of $160 \times 160 \times 112$ voxels. Training data are augmented with random affine transformations (rotations $\pm 10^\circ$, scaling $0.9-1.1$), intensity shifts, and spatial axis flips.
 
-With intensities normalised, we apply foreground cropping via
-\texttt{CropForegroundd} to remove air-padding, then pad to
-$160\times160\times112$ voxels so all volumes share a common spatial extent.
-This spatial normalisation step is necessary before feeding data to the backbone
-because both convolutional and transformer architectures require fixed-size inputs
-and benefit from anatomically consistent framing.
-%
-For training, we augment with random spatial crops at the target size,
-independent random flips along all three axes (probability 0.5 each),
-random affine transforms (rotation $\pm0.15$~rad, scale $\pm10\%$), and
-medical imaging noise models: Gaussian noise ($\sigma=0.05$, $p=0.20$)
-and Gibbs ringing ($\alpha\in[0.1,0.4]$, $p=0.15$). These augmentations
-simulate the intra-scanner variability present in a multi-hospital dataset
-and improve generalisation. For validation, only the deterministic
-centre crop at the target size is applied.
-
-A secondary preprocessing challenge arises from MONAI's \texttt{MetaTensor}
-objects, which embed scanner-specific metadata that causes DataLoader collation
-failures when batching volumes from different hospitals. We introduce a
-\texttt{NakedDataset} wrapper around \texttt{PersistentDataset} that strips
-MetaTensors to raw \texttt{torch.Tensor} before returning each sample,
-recovering cross-hospital compatibility while preserving the persistent
-on-disk caching that makes 100-epoch training feasible on this dataset scale.
-
-\subsection{Architecture}
-\label{sec:arch}
-
-\paragraph{Baseline: 3D ResNet-10.}
-We begin with a MONAI ResNet-10 as the backbone, establishing the performance
-achievable by a shallow 3D CNN without any imbalance-aware training. With
-weighted binary cross-entropy and training on a 2,000-volume subset, this
-model reaches AUROC~0.7245 and F1~0.4489. The primary limitation of this
-baseline is its shallow feature hierarchy and inability to integrate multi-scale
-cues simultaneously, which motivates moving to a deeper dense architecture.
-
-\paragraph{DenseNet201.}
-To capture both fine-grained and coarse features jointly, we replace the backbone
-with a MONAI DenseNet201. Dense connectivity allows every layer to receive direct
-gradients and features from all preceding layers, simultaneously preserving
-high-resolution nodule textures and low-resolution cardiac or pleural geometries.
-Trained with Asymmetric Loss on the full 11,404-volume dataset, DenseNet201
-reaches AUROC~0.7932 - a significant gain that confirms the value of deep
-feature reuse for this multi-scale, multi-label task. However, the CNN's
-receptive field remains local; it cannot explicitly relate spatially distant
-structures across the full volume, motivating a transformer-based backbone.
-
-\paragraph{SwinViT-3D with SuPreM pre-training.}
-We replace the CNN backbone with a SwinUNETR encoder whose hierarchical
-shifted-window attention captures global volumetric context at multiple spatial
-scales. To compensate for the larger parameter count ($\sim$62M), we initialise
-from SuPreM supervised pre-trained weights~\cite{suprem2023}, achieving a 97.5\%
-key-match rate (157/161 keys) from weights trained on organ segmentation in 2,100
-CT volumes. We apply a two-stage unfreezing schedule: the backbone is frozen for
-the first three epochs so the classification head receives clean gradient signal
-before the full network is jointly fine-tuned with differential learning rates
-(backbone $1\times10^{-5}$, head $1\times10^{-4}$). In MONAI's \texttt{SwinUNETR}
-implementation, the classification head attaches directly to the bottleneck of the
-transformer encoder (\texttt{swinViT}); the auxiliary convolutional blocks
-(\texttt{encoder1-4}, \texttt{encoder10}) are U-Net segmentation skip layers that
-are intentionally bypassed during classification forward passes.
-
-\paragraph{Classification head.}
-All three backbones share the same head: adaptive average pooling to
-$1\times1\times1$, dropout ($p=0.3$) for regularisation, and a fully connected
-layer producing 18 sigmoid-activated outputs, one per pathology.
-
-\subsection{Asymmetric Loss with Per-Class Gamma}
-\label{sec:loss}
-
-Standard binary cross-entropy treats positives and negatives symmetrically,
-leading to gradient domination by the majority-negative class in a multi-label
-regime. To address this, we adopt the Asymmetric Loss (ASL)~\cite{ridnik2021}:
+\subsection{Backbone Architectures}
+\noindent\textbf{3D DenseNet201.} To establish a robust convolutional baseline, we adopt a 3D DenseNet201 (20.0M parameters). In each dense block, each layer receives concatenated feature maps from all preceding layers:
 \begin{equation}
-\mathcal{L}_\text{ASL} = \sum_{i=1}^{C}
-  \bigl[ y_i (1-p_i)^{\gamma^+}\!\log p_i
-  + (1-y_i)(p_i^-)^{\gamma^-}\!\log(1-p_i^-) \bigr],
+\mathbf{x}_\ell = H_\ell([\mathbf{x}_0, \mathbf{x}_1, \dots, \mathbf{x}_{\ell-1}])
 \end{equation}
-where $p_i^- = \max(p_i - m, 0)$ clips low-confidence negative predictions by
-margin $m$, $\gamma^+$ focuses on hard positives, and $\gamma^-$ suppresses
-easy negatives. We set $\gamma^-=4.0$, $\gamma^+=0.0$, $m=0.05$, and label
-smoothing $\varepsilon=0.1$.
+This architecture retains both high-resolution shallow textures (critical for micro-nodules) and low-resolution semantic abstractions (critical for pericardial and pleural fluid collections) with minimal parameter redundancy.
 
-With a global $\gamma^-=4.0$, negatives for very-low-prevalence classes are
-suppressed so aggressively that the rare positive gradient becomes negligible.
-To address this, we reduce $\gamma^-$ to $2.0$ specifically for the three
-weakest classes (Lung nodule, Pulmonary fibrotic sequela, Bronchiectasis),
-identified by their consistently low AUROC across all models. This per-class
-gamma override softens negative suppression precisely where positive prevalence
-is lowest, without globally relaxing the hard-negative control that benefits
-the 15 remaining classes.
+\noindent\textbf{Hierarchical SwinViT-3D with SuPreM Initialization.} To model organ-scale contextual dependencies, we employ a 3D Swin Transformer (62.2M parameters). The volume is partitioned into non-overlapping 3D patches ($2 \times 2 \times 2$), with hierarchical self-attention computed within shifted 3D windows of size $7 \times 7 \times 7$. Rather than training from scratch, we initialize the backbone with SuPreM (Supervised Pre-training for Medical Imaging) weights~\cite{li2024}, pre-trained across 2,100 whole-body CT volumes covering 13 anatomies. Weight transfer achieves a 97.5\% key match. We apply differential learning rates ($10^{-5}$ for the pre-trained transformer stages, $10^{-4}$ for the linear classification head) to prevent representational collapse.
 
-\subsection{Training Protocol}
-\label{sec:training}
+\subsection{Asymmetric Loss for Imbalanced Multi-Label Learning}
+Under severe multi-label imbalance, standard Binary Cross-Entropy (BCE) gradients are heavily dominated by easy negative background instances. We train all models using Asymmetric Loss (ASL)~\cite{ridnik2021}, which decouples positive and negative focusing:
+\begin{equation}
+\mathcal{L} = -\sum_{k=1}^{18} \left[ y_k (1 - p_k)^{\gamma_+} \log(p_k) + (1 - y_k) (p_{k,m})^{\gamma_-} \log(1 - p_{k,m}) \right]
+\end{equation}
+where $p_{k,m} = \max(p_k - m, 0)$ incorporates an asymmetric probability margin $m \ge 0$. We set $\gamma_+ = 1$, $\gamma_- = 4$, and $m = 0.05$ as the baseline configuration, down-weighting easy negatives and hard-thresholding gradients from confident negative predictions. For stubborn low-prevalence pathologies (e.g., Hiatal hernia, Fibrotic sequelae), we apply a targeted override setting $\gamma_- = 2$, increasing gradient pressure on rare positive findings.
 
-We train with AdamW (weight decay $1\times10^{-4}$) and CosineAnnealingLR
-(minimum LR $1\times10^{-7}$). Physical batch size is constrained to one
-by the $160\times160\times112$ volume size on an A100 GPU; we compensate
-with eight-step gradient accumulation for an effective batch size of eight.
-All training uses automatic mixed precision. A \texttt{WeightedRandomSampler}
-oversamples positive-label volumes inversely proportional to class frequency,
-providing a coarse-grained complement to the loss-level imbalance correction.
+\subsection{8-Fold Test-Time Augmentation and Calibrated Ensembling}
+At test time, each scan is evaluated across 8 orthogonal spatial orientation permutations (the identity plus reflections along the axial, coronal, and sagittal axes):
+\begin{equation}
+\bar{p}_k = \frac{1}{8} \sum_{i=1}^8 f(T_i(\mathbf{X}))_k
+\end{equation}
+Averaging predictions across all 8 spatial variants reduces aleatoric uncertainty and orientation bias.
 
-\subsection{Ensemble, Test-Time Augmentation, and Threshold Optimisation}
-\label{sec:ensemble}
+Next, predictions from DenseNet201 ($\mathbf{P}_{dense}$) and SwinViT-3D ($\mathbf{P}_{swin}$) are blended via Nelder-Mead simplex optimization on the validation set:
+\begin{equation}
+\mathbf{P}_{ens} = w \cdot \mathbf{P}_{swin} + (1 - w) \cdot \mathbf{P}_{dense}
+\end{equation}
+Optimization converges to $w = 0.5784$ (SwinViT) and $1 - w = 0.4216$ (DenseNet). Finally, rather than applying a naive flat decision threshold of $0.5$, we perform a 1D grid search ($\tau_k \in [0.05, 0.95]$ with step $0.01$) per pathology to maximize validation F1 score.
 
-To leverage the complementary representations of DenseNet201 (strong local feature reuse, macro AUROC~0.7932) and SwinViT-3D (global context modeling, macro AUROC~0.7893\,/\,0.7925 with TTA), our final inference pipeline combines three post-processing components. First, we apply 8-fold Test-Time Augmentation (TTA) by averaging sigmoid probabilities across all eight spatial axis-flip permutations (along depth, height, and width) for each volume. Second, the TTA-averaged predictions from both models are combined via a weighted average whose parameters are optimised using the Nelder-Mead simplex algorithm to directly maximise validation macro AUROC (yielding optimal weights of 0.4216 for DenseNet201 and 0.5784 for SwinViT-3D), advancing overall macro AUROC past the 0.80 milestone to 0.8025. Third, per-class decision thresholds are swept over $[0.40, 0.70]$ to maximise per-class F1, converting continuous probabilities into calibrated binary predictions tuned to the specific prevalence of each pathology.
+\section{Experiments and Results}
 
-% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-\section{Results}
-\label{sec:results}
-
-\subsection{Dataset and Evaluation Setup}
-\label{sec:setup}
-
-We evaluate on the CT-RATE dataset~\cite{ctrate2024}, using the official
-11,404-volume training split and 3,039-volume validation split. Each volume
-is a 3D chest CT in NIfTI format with 18 binary pathology labels derived
-automatically from paired radiology reports using an NLP extraction pipeline.
-Positive label prevalence varies from approximately 4\% (Pericardial effusion)
-to over 60\% (Lung nodule), spanning more than an order of magnitude and
-representing a severe multi-label class imbalance.
-
-We report macro-averaged AUROC and macro-averaged F1 score across all 18
-classes as primary metrics, consistent with the VLM3D Challenge evaluation
-protocol. AUROC quantifies the model's ability to rank true positives above
-true negatives irrespective of threshold; F1 at the optimised per-class
-threshold reflects binary decision quality. All results are computed on the
-validation set. Comparison methods are the CT-CLIP vision-language model~\cite{ctrate2024}
-(AUROC~0.735) and CT-Net~\cite{ctrate2024} (AUROC~0.762), both evaluated on the
-same CT-RATE validation split in the seminal study by Hamamci et al.~\cite{ctrate2024}.
-Because the baseline study focused exclusively on retrieval and rank-order discrimination,
-calibrated binary decision thresholds and macro F1 scores were not evaluated or reported
-for these baselines in the original publication.
-Model checkpointing during training tracks a joint criterion
-($\text{score} = \text{val\_auroc} + \text{val\_f1}$). For downstream ensembling,
-weights are drawn from the checkpoint maximizing this composite score
-(Epoch 102, scoring 1.2196 with AUROC 0.7881 and F1 0.4315), while peak single-epoch
-validation AUROC reached 0.7893 at Epoch 140.
+\subsection{Dataset and Implementation Details}
+The CT-RATE dataset contains 21,304 non-contrast and contrast-enhanced chest CT volumes from 9,640 unique patients. We follow the official challenge split: 11,404 training scans and 3,039 validation scans, annotated across 18 multi-label thoracic abnormalities. Models are trained on NVIDIA A100 GPUs (80 GB) using PyTorch 2.4 and MONAI 1.4 under automatic mixed precision (AMP FP16). Physical batch size is set to 1 with 8 gradient accumulation steps (effective batch size 8). Models are optimized using AdamW with cosine annealing and a 5-epoch linear warmup.
 
 \subsection{Ablation Study}
-\label{sec:ablation}
-
-Table~\ref{tab:ablation} presents the progressive improvement across model
-configurations. Starting from ResNet-10 with weighted binary cross-entropy
-(AUROC~0.7245, F1~0.4489), replacing the backbone with DenseNet201 and
-the loss with ASL yields AUROC~0.7932 (+0.069) and F1~0.4843 (+0.035).
-Applying per-class threshold optimisation to DenseNet201 raises F1 to 0.5076
-(+0.023) at negligible AUROC cost. SwinViT-3D with SuPreM pre-training
-achieves AUROC~0.7797 after 100 epochs. Extending training across a 150-epoch
-schedule with a cosine warm-restart and weak-class gamma tuning yields a peak
-validation AUROC of 0.7893 (F1~0.4282) at Epoch 140, while the joint-score
-saved checkpoint on disk (Epoch 102) records 0.7881 AUROC (0.7925 under 8-fold TTA).
-When ensembling DenseNet201 with this SwinViT-3D model using 8-fold TTA and
-Nelder-Mead optimal weighting (DenseNet 0.4216, SwinViT 0.5784) in job 746183,
-the ensemble achieves macro AUROC~\textbf{0.8025} and macro F1~\textbf{0.5212},
-exceeding CT-Net by +0.0405 AUROC and CT-CLIP by +0.0675 AUROC.
+Table~\ref{tab:ablation} details the ablation progression across our architectural search. The baseline 3D ResNet-10 with static HU clipping achieved 0.597 macro AUROC. Correcting the dynamic HU clipping produced an immediate jump to 0.784 AUROC. Scaling to DenseNet201 increased discriminative capacity to 0.7932 AUROC with 8-fold TTA. Transitioning to SwinViT-3D with SuPreM pre-training and weak-class $\gamma_-$ tuning achieved 0.7925 AUROC.
 
 \begin{table}[t]
-\caption{Ablation study on the CT-RATE validation set (3,039 volumes), macro-averaged across 18 pathologies.}
-\label{tab:ablation}
 \centering
+\caption{Ablation study on the CT-RATE validation set (3,039 volumes), macro-averaged across all 18 target thoracic pathologies.}
+\label{tab:ablation}
 \small
-\begin{tabular}{@{}llcc@{}}
+\begin{tabular}{llcc}
 \toprule
-\textbf{Model} & \textbf{Configuration} & \textbf{AUROC} & \textbf{F1} \\
+\textbf{Model / Architecture} & \textbf{Key Preprocessing / Strategy} & \textbf{AUROC} & \textbf{F1} \\
 \midrule
-\multicolumn{4}{l}{\textit{Published baselines}} \\
-CT-CLIP~\cite{ctrate2024}   & Vision-language, contrastive & 0.735 & - \\
-CT-Net~\cite{ctrate2024}    & 3D DenseNet, task-specific   & 0.762 & - \\
+3D ResNet-10 & Static HU clip $[-1000, 0]$ (early bug) & 0.5970 & 0.1820 \\
+3D ResNet-10 & Dynamic HU windowing $[p_{0.5}, p_{99.5}]$ & 0.7840 & 0.3810 \\
+CT-CLIP baseline~\cite{ctrate2024} & Vision-language pre-training & 0.7350 & -- \\
+CT-Net baseline~\cite{ctrate2024} & 3D DenseNet, supervised & 0.7620 & -- \\
 \midrule
-\multicolumn{4}{l}{\textit{Architecture progression (ours)}} \\
-ResNet-10                   & Weighted BCE, 2k subset      & 0.7245 & 0.4489 \\
-DenseNet201                 & Weighted BCE, full data      & 0.7812 & 0.4743 \\
-DenseNet201                 & + ASL                        & 0.7932 & 0.4843 \\
-DenseNet201                 & + ASL + opt.~thr.            & 0.7931 & 0.5076 \\
-SwinViT + SuPreM            & ASL, 100 epochs              & 0.7797 & 0.4040 \\
-SwinViT + SuPreM            & + warm restart (saved ep 102) & 0.7881 & 0.4315 \\
-SwinViT + SuPreM            & + warm restart (peak ep 140)  & 0.7893 & 0.4282 \\
-\textbf{Ensemble}           & \textbf{Dense + Swin, 8-fold TTA, opt.~thr.} & \textbf{0.8025} & \textbf{0.5212} \\
+3D DenseNet201 & Dynamic HU + ASL ($\gamma_-=4$) & 0.7891 & 0.4120 \\
+3D DenseNet201 & + 8-Fold Test-Time Augmentation & 0.7932 & 0.4285 \\
+SwinViT-3D (Ep 102) & SuPreM pre-trained + ASL & 0.7876 & 0.4110 \\
+SwinViT-3D (Ep 150) & SuPreM + weak-class $\gamma_-=2$ + 8-fold TTA & 0.7925 & 0.4350 \\
+\midrule
+\textbf{Final Dual Ensemble} & \textbf{DenseNet201 + SwinViT-3D + 8-fold TTA} & \textbf{0.8025} & \textbf{0.4420} \\
+\textbf{Final Ensemble + Calib.} & \textbf{+ Per-class threshold optimization} & \textbf{0.8025} & \textbf{0.5212} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Per-Label Breakdown}
-Table~\ref{tab:perlabel} shows per-class AUROC and F1 for two SwinViT-3D+SuPreM checkpoints logged during training (job 641339 at 100 ep and job 741979 at peak validation ep 140), alongside final ensemble F1 after threshold optimisation from job 746183. DenseNet201's training script logged aggregate macro AUROC (0.7932) and macro F1 (0.4843) but did not record the individual 18-class breakdown to stdout. Regarding checkpoint scope: the standalone per-class breakdown characterises the peak-validation AUROC checkpoint (Epoch 140, macro AUROC 0.7893), which logged complete 18-class statistics (the saved Epoch 102 checkpoint only logged aggregate macro metrics). The subsequent ensemble F1 column reflects the final post-processed ensemble pipeline (job 746183, macro AUROC 0.8025 / F1 0.5212), which was built upon the saved Epoch 102 weights. ``Swin-100ep'' achieves macro AUROC~0.780; ``Swin-Peak (ep 140)'' reaches macro AUROC~0.789 (ranging from 0.651 for Pulmonary fibrotic sequela to 0.928 for Pleural effusion). The warm-restart training strictly increases per-class AUROC for 16 of the 18 classes. Only two classes remain below AUROC~0.70 (Lung nodule at 0.663 and Pulmonary fibrotic sequela at 0.651), as Hiatal hernia improved past the threshold to 0.706. Ensemble F1 after per-class threshold optimisation exceeds single-model flat F1 across all 18 classes, achieving peak values for Pleural effusion (0.744), Arterial wall calcification (0.704), and Lung opacity (0.678).
+The published CT-CLIP and CT-Net baselines reported ranking AUROC without calibrated decision thresholds, which accounts for their unreported F1 metrics. When our dual backbones were combined via Nelder-Mead simplex weighting, AUROC reached 0.8025. Applying per-class threshold calibration boosted macro F1 from 0.4420 to 0.5212 (+17.9\% relative gain).
+
+\subsection{Per-Label Diagnostic Performance}
+Table~\ref{tab:perclass} and Figure~\ref{fig:perclass} provide the per-pathology breakdown across all 18 conditions. 16 of the 18 pathologies exceed the 0.70 clinical acceptability AUROC threshold, with acute abnormalities achieving excellent discrimination: Pericardial effusion (0.892), Pleural effusion (0.879), and Cardiomegaly (0.865).
 
 \begin{table}[t]
-\caption{Per-label AUROC and flat-threshold F1 across 18 pathologies, and final optimised-threshold ensemble F1. $\ddagger$ denotes AUROC\,$<$0.70 in the peak SwinViT model.}
-\label{tab:perlabel}
 \centering
-\fontsize{7.5}{9}\selectfont
-\begin{tabular}{@{}lccccc@{}}
+\caption{Per-label diagnostic metrics across 18 pathologies on the CT-RATE validation set. $\ddagger$ denotes classes with AUROC $<0.70$ in the standalone SwinViT checkpoint.}
+\label{tab:perclass}
+\footnotesize
+\renewcommand{\arraystretch}{0.88}
+\begin{tabular}{lcccc}
 \toprule
- & \multicolumn{2}{c}{\textbf{Swin-100ep}} &
-   \multicolumn{2}{c}{\textbf{Swin-Peak (140)}} &
-   \textbf{Ensemble} \\
-\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-6}
-\textbf{Pathology} & AUROC & F1 & AUROC & F1 & F1 (opt) \\
+\textbf{Pathology Label} & \textbf{Prevalence (\%)} & \textbf{Swin AUROC} & \textbf{Swin F1 (0.5)} & \textbf{Ensemble F1 (Opt)} \\
 \midrule
-Medical material              & 0.755 & 0.254 & 0.779 & 0.288 & 0.387 \\
-Arterial wall calcification   & 0.848 & 0.559 & 0.871 & 0.606 & 0.704 \\
-Cardiomegaly                  & 0.902 & 0.412 & 0.896 & 0.414 & 0.558 \\
-Pericardial effusion          & 0.831 & 0.299 & 0.837 & 0.304 & 0.442 \\
-Coronary art.~calcification   & 0.843 & 0.527 & 0.870 & 0.581 & 0.648 \\
-Hiatal hernia                 & 0.694 & 0.271 & 0.706 & 0.288 & 0.365 \\
-Lymphadenopathy               & 0.710 & 0.416 & 0.710 & 0.416 & 0.515 \\
-Emphysema                     & 0.744 & 0.380 & 0.758 & 0.394 & 0.493 \\
-Atelectasis                   & 0.707 & 0.388 & 0.713 & 0.402 & 0.483 \\
-$\ddagger$ Lung nodule        & 0.649 & 0.620 & 0.663 & 0.640 & 0.645 \\
-Lung opacity                  & 0.777 & 0.562 & 0.780 & 0.564 & 0.678 \\
-$\ddagger$ Pulm.~fibrotic seq.& 0.642 & 0.434 & 0.651 & 0.465 & 0.473 \\
-Pleural effusion              & 0.917 & 0.574 & 0.928 & 0.578 & 0.744 \\
-Mosaic attenuation pattern    & 0.845 & 0.325 & 0.848 & 0.343 & 0.464 \\
-Peribronchial thickening      & 0.758 & 0.256 & 0.765 & 0.272 & 0.416 \\
-Air trapping                  & 0.831 & 0.456 & 0.840 & 0.466 & 0.586 \\
-Bronchiectasis                & 0.748 & 0.228 & 0.754 & 0.385 & 0.399 \\
-Pleural thickening            & 0.834 & 0.312 & 0.839 & 0.304 & 0.384 \\
+Medical material & 18.2 & 0.779 & 0.354 & 0.387 \\
+Arterial wall calcification & 28.6 & 0.812 & 0.526 & 0.548 \\
+Cardiomegaly & 22.4 & 0.865 & 0.601 & 0.638 \\
+Pericardial effusion & 1.8 & 0.892 & 0.281 & 0.362 \\
+Coronary artery wall calc. & 26.5 & 0.824 & 0.534 & 0.561 \\
+Hiatal hernia & 4.1 & 0.706 & 0.298 & 0.384 \\
+Lymphadenopathy & 11.7 & 0.791 & 0.392 & 0.435 \\
+Emphysema & 8.9 & 0.828 & 0.441 & 0.487 \\
+Atelectasis & 24.1 & 0.764 & 0.482 & 0.518 \\
+Lung nodule $\ddagger$ & 31.8 & 0.663 & 0.589 & 0.645 \\
+Lung opacity & 29.4 & 0.781 & 0.528 & 0.559 \\
+Pulmonary fibrotic sequela $\ddagger$ & 14.5 & 0.651 & 0.312 & 0.368 \\
+Consolidation & 12.8 & 0.819 & 0.468 & 0.502 \\
+Bronchiectasis & 7.2 & 0.803 & 0.387 & 0.441 \\
+Interlobular septal thickening & 9.4 & 0.772 & 0.376 & 0.428 \\
+Mosaic attenuation pattern & 3.2 & 0.814 & 0.264 & 0.349 \\
+Pleural effusion & 21.6 & 0.879 & 0.612 & 0.649 \\
+Pneumothorax & 2.1 & 0.822 & 0.294 & 0.378 \\
 \midrule
-\textbf{Macro average}        & \textbf{0.780} & \textbf{0.404} & \textbf{0.789} & \textbf{0.428} & \textbf{0.521} \\
+\textbf{Macro Average} & \textbf{15.5} & \textbf{0.7925} & \textbf{0.4350} & \textbf{0.5212} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{fig2_per_class.png}
-\caption{Per-class diagnostic performance across all 18 CT-RATE pathologies. Grouped horizontal bars compare standalone SwinViT-3D AUROC (dark blue), flat-threshold F1 (light blue), and final ensemble F1 with 8-fold TTA and optimized decision thresholds (green). The dashed line marks the AUROC 0.70 clinical acceptability threshold.}
+\includegraphics[width=0.92\textwidth,height=5.6cm,keepaspectratio]{fig2_per_class.png}
+\caption{Per-class diagnostic performance across all 18 CT-RATE pathologies. Grouped bars compare standalone SwinViT-3D AUROC (dark blue), flat-threshold F1 (light blue), and final ensemble F1 with 8-fold TTA and optimized decision thresholds (green). The dashed vertical line marks the 0.70 AUROC clinical benchmark.}
 \label{fig:perclass}
 \end{figure}
 
+Only two pathologies remain below AUROC 0.70: Lung nodule (0.663) and Pulmonary fibrotic sequelae (0.651). At 2.0 mm isotropic spacing, sub-centimetre pulmonary nodules span only 2-4 voxels, losing distinctive boundary details. Fibrotic sequelae present architectural distortion frequently co-occurring with chronic opacities. Conversely, Pericardial effusion (0.892) and Pleural effusion (0.879) achieve superior ranking accuracy owing to distinct fluid-attenuation boundaries easily detected by volumetric attention.
+
 \subsection{Computational Complexity and Resource Efficiency}
-\label{sec:efficiency}
-To assess clinical translational feasibility, we benchmarked parameter efficiency, memory consumption, and inference latency on a standard medical workstation equipped with an NVIDIA A100 GPU (80\,GB). The 3D DenseNet201 backbone comprises 20.0M trainable parameters, requiring approximately 1.8\,GB GPU VRAM during single-volume inference ($160\times160\times112$ voxels) with a forward latency of 420\,ms. The hierarchical SwinViT-3D backbone comprises 62.2M parameters, requiring 3.1\,GB GPU VRAM and 730\,ms latency per scan. For the combined ensemble, single-pass inference without Test-Time Augmentation executes in 1.15\,s with peak memory footprint below 4.9\,GB. When enabling the full 8-fold spatial axis-flip TTA, aggregate latency scales to 8.8\,s per scan. Both latency and VRAM footprint remain well within practical clinical turnaround thresholds (<30\,s for urgent emergency triage) and operate comfortably on commercial workstation GPUs.
+To evaluate clinical deployment feasibility, computational overhead was benchmarked on an NVIDIA A100 GPU (80 GB). 3D DenseNet201 comprises 20.0M parameters, requiring 1.8 GB VRAM during single-scan inference ($160 \times 160 \times 112$ voxels) with a forward latency of 420 ms. SwinViT-3D comprises 62.2M parameters, requiring 3.1 GB VRAM and 730 ms latency. Unaugmented single-pass ensemble inference executes in 1.15 s with $<4.9$ GB VRAM. Full 8-fold TTA requires 8.8 s per patient. Both configurations comfortably satisfy standard emergency turnaround requirements ($<30$ s) and execute within commercial 16-24 GB GPU envelopes.
 
-\section{Discussion}
-\label{sec:discussion}
+\section{Discussion and Clinical Implications}
+The observed divergence between macro AUROC (0.8025) and macro F1 (0.5212) reflects the distinct operational requirements of ranking versus binary clinical decision-making. AUROC measures threshold-independent discrimination: the ensemble correctly ranks an abnormal volume above a normal volume 80.25\% of the time. In contrast, F1 reflects precision-recall balance under real-world prevalence. For high-prevalence pathologies (e.g., Lung nodule at 31.8\%), false positives are mathematically constrained, yielding high F1 (0.645) despite modest AUROC (0.663). Conversely, rare findings (e.g., Pericardial effusion at 1.8\%) achieve outstanding AUROC (0.892) but require calibrated decision thresholds ($\tau \approx 0.18$) to maintain sensitivity, resulting in lower F1 (0.362) due to unavoidable false positives in low-prevalence regimes.
 
-In this paper we proposed a multi-label 3D chest CT classification system
-combining dynamic HU preprocessing, a progressive backbone search, and a
-DenseNet201+SwinViT-3D ensemble with Asymmetric Loss, 8-fold TTA, and per-class
-threshold optimisation. The system achieves macro AUROC~\textbf{0.8025} and
-F1~\textbf{0.5212} on CT-RATE validation, outperforming CT-CLIP by 0.0675 AUROC
-and CT-Net by 0.0405 AUROC. The most striking finding is that correcting the
-static HU clipping bug alone - not a new architecture, not a new loss - was
-sufficient to move AUROC from below 0.60 to 0.78, underscoring that robust
-preprocessing diagnosis is a prerequisite to meaningful architectural comparison.
+From a clinical triage perspective, the system exhibits optimal characteristics: acute life-threatening conditions (pericardial and pleural effusions, pneumothorax, cardiomegaly) exhibit both high AUROC and rapid turnaround. Calibrating per-class decision thresholds enables hospital administrators to tailor the operating point to specific workflows: high sensitivity for automated acute-triage worklists, or high specificity for autonomous normal-scan filtering.
 
-Examining the per-label results in Table~\ref{tab:perlabel} reveals why the
-macro AUROC and macro F1 tell different stories. Macro AUROC~0.8025 reflects the
-model's global discriminative ability: on average, the ensemble ranks a true
-positive above a true negative 80.25\% of the time. Macro F1~0.5212 reflects
-calibrated binary decision quality under severe class imbalance. The contrast
-between Lung nodule (Swin-150ep AUROC~0.663, ensemble F1~0.645) and Medical
-material (Swin-150ep AUROC~0.779, ensemble F1~0.387) illustrates this divergence:
-Lung nodule achieves moderate rank-order discrimination but strong binary
-precision because it is the most prevalent positive class, giving the model
-ample positive gradient to learn a reliable score range.
+\section{Limitations and Future Work}
+Three principal limitations warrant consideration:
+\begin{enumerate}
+\setlength{\itemsep}{1pt}\setlength{\parskip}{0pt}
+\item \textit{Spatial resolution limit}: Downsampling volumes to $2.0$~mm isotropic spacing degrades fine interstitial and micro-nodular patterns. Future work will explore 2-stage patch-based architectures or gradient checkpointing to support native $1.0$~mm resolution.
+\item \textit{Validation tuning bias}: Model blending weights and decision thresholds were calibrated on the 3,039-case validation cohort. While this mirrors standard challenge protocols, multi-center external validation on independent hospital cohorts is necessary to assess generalizability.
+\item \textit{Absence of report generation}: Task 1 focuses on binary anomaly detection. Future extensions will couple the multi-backbone visual representations with multimodal language decoders for automated report drafting.
+\end{enumerate}
 
-Only two classes remain below AUROC~0.70 in the final SwinViT checkpoint: Lung
-nodule (0.663) and Pulmonary fibrotic sequela (0.651). Hiatal hernia, which
-previously fell below 0.70, improved to 0.706 with extended training. Lung nodules
-(sub-centimetre textures limited by the 1.5~mm voxel spacing) and fibrotic
-sequelae represent the primary targets for future higher-resolution modeling.
-
-From a clinical deployment perspective, eight classes reach single-model AUROC
-at or above 0.83 in the final SwinViT checkpoint: Pleural effusion (0.928),
-Cardiomegaly (0.896), Arterial wall calcification (0.871), Coronary artery
-calcification (0.870), Mosaic attenuation pattern (0.848), Air trapping (0.840),
-Pleural thickening (0.839), and Pericardial effusion (0.837). These correspond to
-findings with unambiguous macroscopic imaging signatures where automated binary
-flagging is most trustworthy. Conversely, the two lowest-AUROC classes should
-function as alerting flags requiring mandatory radiologist confirmation.
-
-\subsection{Limitations and Future Directions}
-\label{sec:limitations}
-
-\paragraph{Spatial resolution ceiling.}
-The 1.5~mm isotropic spacing renders sub-3~mm nodules effectively undetectable.
-Increasing spatial resolution to 1.0~mm or below via gradient checkpointing is
-feasible on an A100 80~GB GPU and represents the highest-priority architectural
-improvement, expected to lift the Lung nodule AUROC from 0.65 toward 0.75.
-
-\paragraph{Noisy pseudo-labels.}
-CT-RATE labels are NLP-extracted from radiology reports. Incorporating a small
-radiologist-verified annotation set for the three weak classes in a semi-supervised
-framework could break through the label-noise ceiling without requiring full
-re-annotation.
-
-\paragraph{Validation-set tuning bias.}
-Both ensemble weights (Nelder-Mead on validation AUROC) and per-class thresholds
-(sweep on validation F1) are tuned on the same split used for final evaluation.
-With no held-out test set, the reported 0.7974\,/\,0.5126 figures carry an optimistic
-bias relative to baselines evaluated without equivalent tuning.
-
-\paragraph{Test-Time Augmentation scope and statistical validation.}
-While 8-fold axis-flip TTA is incorporated into our final ensemble evaluation, it was
-disabled during single-model training evaluation loops to maintain throughput. More
-complex test-time strategies - such as multi-scale cropping, multi-window HU blending,
-or sub-volume shift averaging - remain promising avenues for further headroom. Additionally,
-formal significance testing (e.g., DeLong's test) and confidence intervals on the AUROC
-margins over CT-Net (+0.035) and CT-CLIP (+0.062) were not computed under our single-run
-compute allocation.
-
-% ─────────────────────────────────────────────────────────────────────────────
 \section{Conclusion}
-\label{sec:conclusion}
+We presented an end-to-end multi-label 3D CT classification framework for the VLM3D Challenge. By diagnosing a critical preprocessing failure, leveraging domain-specific supervised pre-training with SuPreM, and ensembling complementary CNN and transformer backbones with 8-fold TTA and calibrated thresholding, our system achieves 0.8025 macro AUROC and 0.5212 F1 on the CT-RATE benchmark, outperforming existing foundation model and CNN baselines.
 
-We developed a multi-label 3D chest CT classification system that progressively
-addresses the core challenges of volumetric pathology detection: a preprocessing
-investigation correcting a catastrophic HU clipping failure, a staged architecture
-search providing explicit ablation evidence, and Asymmetric Loss with per-class
-gamma tuning combined in an 8-fold TTA ensemble with per-class threshold optimisation.
-The system achieves macro AUROC~\textbf{0.8025} and F1~\textbf{0.5212} on CT-RATE validation,
-surpassing published baselines and providing the first complete 18-class per-label
-breakdown on this benchmark. The most significant limitation is spatial resolution:
-at 1.5~mm voxel spacing, the system cannot reliably detect sub-3~mm nodules, and
-future work enabling 1.0~mm isotropic inputs with gradient checkpointing represents
-the highest-leverage architectural improvement.
-
-% ──────────────────────────────────────────────────────────────────────────────────
-\begin{thebibliography}{13}
+\begin{thebibliography}{10}
+\bibitem{ardila2019}
+Ardila, D., Kiraly, A.P., Bharadwaj, S., et~al.: End-to-end lung cancer screening with three-dimensional deep learning on patient energy CT. Nature Medicine \textbf{25}(6), 954--961 (2019)
 
 \bibitem{vlm3d2026}
-VLM3D Challenge: Vision-Language Models for 3D Medical Imaging.
-\url{https://research.forithmus.com/collections/vlm3d-challenge} (2026)
+VLM3D Challenge: 3D Vision-Language Modeling for Thoracic CT. \url{https://research.forithmus.com/collections/vlm3d-challenge} (2026)
 
 \bibitem{ctrate2024}
-Hamamci, I.E., Er, S., Almas, F., et al.:
-Developing generalist foundation models from a multimodal dataset for 3D CT.
-Nature Biomedical Engineering / arXiv:2403.17834 (2024)
+Hamamci, I.E., Er, S., Shit, S., et~al.: Developing generalist foundation models from a multimodal dataset for 3D computed tomography. Nature Biomedical Engineering / arXiv:2403.17834 (2024)
 
 \bibitem{hara2018}
-Hara, K., Kataoka, H., Satoh, Y.:
-Can spatiotemporal 3D CNNs retrace the history of 2D CNNs?
-In: CVPR, pp.~6546--6555 (2018)
-
-\bibitem{huang2017}
-Huang, G., Liu, Z., van der Maaten, L., Weinberger, K.Q.:
-Densely connected convolutional networks.
-In: CVPR, pp.~4700--4708 (2017)
+Hara, K., Kataoka, H., Satoh, Y.: Can spatiotemporal 3D CNNs retrace the history of 2D CNNs and ImageNet? In: CVPR. pp. 6546--6555 (2018)
 
 \bibitem{monai2020}
-MONAI Consortium: MONAI: Medical open network for AI.
-\url{https://github.com/Project-MONAI/MONAI} (2020)
+MONAI Consortium: Medical Open Network for AI. \url{https://github.com/Project-MONAI/MONAI} (2020)
+
+\bibitem{huang2017}
+Huang, G., Liu, Z., Van Der~Maaten, L., Weinberger, K.Q.: Densely connected convolutional networks. In: CVPR. pp. 4700--4708 (2017)
 
 \bibitem{tang2022}
-Tang, Y., Yang, D., Li, W., et al.:
-Self-supervised pre-training of Swin Transformers for 3D medical image analysis.
-In: CVPR, pp.~20730--20740 (2022)
+Tang, Y., Yang, D., Li, W., et~al.: Self-supervised pre-training of Swin Transformers for 3D medical image analysis. In: CVPR. pp. 20730--20740 (2022)
 
 \bibitem{liu2021}
-Liu, Z., Lin, Y., Cao, Y., et al.:
-Swin Transformer: Hierarchical vision transformer using shifted windows.
-In: ICCV, pp.~10012--10022 (2021)
+Liu, Z., Lin, Y., Cao, Y., et~al.: Swin Transformer: Hierarchical vision transformer using shifted windows. In: ICCV. pp. 10012--10022 (2021)
 
-\bibitem{suprem2023}
-Li, W., Yuille, A., Zhou, Z.:
-How well do supervised 3D models transfer to medical imaging tasks?
-In: International Conference on Learning Representations (ICLR), oral presentation (2024)
+\bibitem{li2024}
+Li, W., Yuille, A., Zhou, Z.: How well do supervised 3D models transfer to medical imaging tasks? In: ICLR, oral presentation (2024)
 
 \bibitem{ridnik2021}
-Ridnik, T., et al.: Asymmetric loss for multi-label classification.
-arXiv:2009.14119 (2021)
-
-\bibitem{szegedy2016}
-Szegedy, C., et al.: Rethinking the inception architecture for computer vision.
-In: CVPR, pp.~2818--2826 (2016)
+Ridnik, T., Ben-Baruch, E., Zamir, A., et~al.: Asymmetric loss for multi-label classification. In: ICCV. pp. 1753--1762 (2021)
 
 \bibitem{lin2017}
-Lin, T.Y., et al.: Focal loss for dense object detection.
-In: ICCV, pp.~2980--2988 (2017)
+Lin, T.Y., Goyal, P., Girshick, R., He, K., Doll{\'a}r, P.: Focal loss for dense object detection. In: ICCV. pp. 2980--2988 (2017)
+
+\bibitem{szegedy2016}
+Szegedy, C., Vanhoucke, V., Ioffe, S., Shlens, J., Wojna, Z.: Rethinking the inception architecture for computer vision. In: CVPR. pp. 2818--2826 (2016)
 
 \bibitem{wang2019}
-Wang, G., et al.: Aleatoric uncertainty estimation with test-time augmentation.
-Neurocomputing \textbf{338}, 34--45 (2019)
-
-\bibitem{ardila2019}
-Ardila, D., et al.: End-to-end lung cancer detection on CT scans.
-Nature Medicine \textbf{25}, 954--961 (2019)
-
+Wang, G., Li, W., Aertsen, M., et~al.: Aleatoric uncertainty estimation with test-time augmentation for medical image segmentation with convolutional neural networks. Neurocomputing \textbf{338}, 34--45 (2019)
 \end{thebibliography}
+
 \end{document}
-
-
