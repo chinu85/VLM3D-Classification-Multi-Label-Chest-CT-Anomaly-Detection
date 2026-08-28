@@ -36,10 +36,19 @@ wheels/
 */.ipynb_checkpoints/*
 
 # Tensorboard & logs
-runs/
-*.log
+# Output & error logs
 *.out
 *.err
+
+# TeX & build binaries
+tectonic/
+*.aux
+*.log
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
 slurm-*.out
 
 # Medical Imaging Data
