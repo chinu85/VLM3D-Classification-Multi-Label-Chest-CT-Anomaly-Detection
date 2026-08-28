@@ -1,0 +1,101 @@
+{
+    "macro_auroc": 0.7890389420772579,
+    "macro_f1_rigid_0.5": 0.44131678695046633,
+    "macro_f1_optimized": 0.49927289654034396,
+    "weights": {
+        "densenet201": 0.5,
+        "swin": 0.5
+    },
+    "class_metrics": {
+        "Medical material": {
+            "threshold": 0.55,
+            "default_f1": 0.3022508038585209,
+            "optimized_f1": 0.3276699029126214
+        },
+        "Arterial wall calcification": {
+            "threshold": 0.59,
+            "default_f1": 0.595941616233535,
+            "optimized_f1": 0.6752648549055734
+        },
+        "Cardiomegaly": {
+            "threshold": 0.59,
+            "default_f1": 0.45984251968503936,
+            "optimized_f1": 0.5215252152521526
+        },
+        "Pericardial effusion": {
+            "threshold": 0.51,
+            "default_f1": 0.3894039735099338,
+            "optimized_f1": 0.41237113402061853
+        },
+        "Coronary artery wall calcification": {
+            "threshold": 0.5800000000000001,
+            "default_f1": 0.5642008432349559,
+            "optimized_f1": 0.6271018793273986
+        },
+        "Hiatal hernia": {
+            "threshold": 0.54,
+            "default_f1": 0.3097269624573379,
+            "optimized_f1": 0.3469812630117974
+        },
+        "Lymphadenopathy": {
+            "threshold": 0.5800000000000001,
+            "default_f1": 0.4263392857142857,
+            "optimized_f1": 0.5183840217884703
+        },
+        "Emphysema": {
+            "threshold": 0.56,
+            "default_f1": 0.40840398083302615,
+            "optimized_f1": 0.4687719298245614
+        },
+        "Atelectasis": {
+            "threshold": 0.59,
+            "default_f1": 0.4072769953051643,
+            "optimized_f1": 0.47107868681605003
+        },
+        "Lung nodule": {
+            "threshold": 0.63,
+            "default_f1": 0.6193401592718999,
+            "optimized_f1": 0.6446983789529631
+        },
+        "Lung opacity": {
+            "threshold": 0.62,
+            "default_f1": 0.5614617940199336,
+            "optimized_f1": 0.676253081347576
+        },
+        "Pulmonary fibrotic sequela": {
+            "threshold": 0.5800000000000001,
+            "default_f1": 0.4341126461211477,
+            "optimized_f1": 0.465552384834896
+        },
+        "Pleural effusion": {
+            "threshold": 0.5800000000000001,
+            "default_f1": 0.5651808242220353,
+            "optimized_f1": 0.6955475330926595
+        },
+        "Mosaic attenuation pattern": {
+            "threshold": 0.59,
+            "default_f1": 0.382089552238806,
+            "optimized_f1": 0.4426559356136821
+        },
+        "Peribronchial thickening": {
+            "threshold": 0.53,
+            "default_f1": 0.3495518565941101,
+            "optimized_f1": 0.4095634095634096
+        },
+        "Air trapping": {
+            "threshold": 0.5700000000000001,
+            "default_f1": 0.4933078393881453,
+            "optimized_f1": 0.5451997196916608
+        },
+        "Bronchiectasis": {
+            "threshold": 0.55,
+            "default_f1": 0.3230563002680965,
+            "optimized_f1": 0.3744
+        },
+        "Pleural thickening": {
+            "threshold": 0.54,
+            "default_f1": 0.35221421215242016,
+            "optimized_f1": 0.3638928067700987
+        }
+    }
+}

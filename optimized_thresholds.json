@@ -1,0 +1,97 @@
+{
+    "macro_auroc": 0.793147598267406,
+    "macro_f1_rigid_0.5": 0.48246022898043894,
+    "macro_f1_optimized": 0.5076066003779127,
+    "class_metrics": {
+        "Effusion": {
+            "threshold": 0.52,
+            "default_f1": 0.34375,
+            "optimized_f1": 0.3472081218274112
+        },
+        "Consolidation": {
+            "threshold": 0.5800000000000001,
+            "default_f1": 0.6483381206401313,
+            "optimized_f1": 0.6790653314258465
+        },
+        "Infiltration": {
+            "threshold": 0.59,
+            "default_f1": 0.49559082892416223,
+            "optimized_f1": 0.5519713261648745
+        },
+        "Atelectasis": {
+            "threshold": 0.52,
+            "default_f1": 0.4119496855345912,
+            "optimized_f1": 0.4265232974910394
+        },
+        "Cardiomegaly": {
+            "threshold": 0.5700000000000001,
+            "default_f1": 0.6010498687664042,
+            "optimized_f1": 0.6242362525458248
+        },
+        "Node": {
+            "threshold": 0.53,
+            "default_f1": 0.34579439252336447,
+            "optimized_f1": 0.36014760147601477
+        },
+        "Mass": {
+            "threshold": 0.59,
+            "default_f1": 0.4802538787023977,
+            "optimized_f1": 0.5205194805194805
+        },
+        "Nodule": {
+            "threshold": 0.52,
+            "default_f1": 0.46611053180396245,
+            "optimized_f1": 0.4682115270350565
+        },
+        "Pneumothorax": {
+            "threshold": 0.56,
+            "default_f1": 0.45389537071885583,
+            "optimized_f1": 0.4793467819404419
+        },
+        "Pleural_Thickening": {
+            "threshold": 0.61,
+            "default_f1": 0.6316789361196865,
+            "optimized_f1": 0.6454054054054054
+        },
+        "Edema": {
+            "threshold": 0.6,
+            "default_f1": 0.632404181184669,
+            "optimized_f1": 0.6829268292682927
+        },
+        "Emphysema": {
+            "threshold": 0.55,
+            "default_f1": 0.4589861751152074,
+            "optimized_f1": 0.4687116564417178
+        },
+        "Fibrosis": {
+            "threshold": 0.61,
+            "default_f1": 0.6324110671936759,
+            "optimized_f1": 0.7119078104993598
+        },
+        "Pneumonia": {
+            "threshold": 0.5800000000000001,
+            "default_f1": 0.38672768878718533,
+            "optimized_f1": 0.43157894736842106
+        },
+        "Hernia": {
+            "threshold": 0.51,
+            "default_f1": 0.4019607843137255,
+            "optimized_f1": 0.4083769633507853
+        },
+        "Fracture": {
+            "threshold": 0.5800000000000001,
+            "default_f1": 0.5432525951557093,
+            "optimized_f1": 0.5696877380045697
+        },
+        "Vascular_Congestion": {
+            "threshold": 0.51,
+            "default_f1": 0.3869281045751634,
+            "optimized_f1": 0.39335180055401664
+        },
+        "Other_Opacity": {
+            "threshold": 0.48000000000000004,
+            "default_f1": 0.3632019115890084,
+            "optimized_f1": 0.36774193548387096
+        }
+    }
+}
