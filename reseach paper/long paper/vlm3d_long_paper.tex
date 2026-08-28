@@ -40,7 +40,7 @@ Multi-label volumetric CT interpretation presents three severe technical hurdles
 \setlength{\itemsep}{1pt}\setlength{\parskip}{0pt}
 \item \textit{Extreme spatial dimensionality}: Processing full 3D CT volumes at native isotropic resolution exceeds standard GPU accelerator memory, requiring careful balancing of spatial resampling, patch sizes, and memory footprints.
 \item \textit{Pathological scale heterogeneity}: The 18 target conditions in the CT-RATE benchmark~\cite{ctrate2024} span multiple orders of spatial magnitude, ranging from sub-centimetre focal nodules to diffuse interstitial opacities and organ-level cardiac enlargement.
-\item \textit{Pervasive label co-occurrence and imbalance}: Positive class prevalence ranges from under 2\% (e.g., pericardial effusion) to over 30\% (e.g., lung nodule, pleural effusion), producing acute gradient starvation for low-prevalence findings when trained under standard binary cross-entropy.
+\item \textit{Pervasive label co-occurrence and imbalance}: Positive class prevalence ranges from under 8\% (e.g., pericardial effusion, mosaic attenuation) to over 40\% (e.g., lung nodule, lung opacity), producing acute gradient starvation for low-prevalence findings when trained under standard binary cross-entropy.
 \end{enumerate}
 
 In this paper, we describe and evaluate an end-to-end multi-label 3D CT anomaly detection system developed for the VLM3D Challenge~\cite{vlm3d2026} on the CT-RATE dataset (11,404 training and 3,039 validation volumes). We present a principled progression from shallow 3D CNNs to hierarchical vision transformers, investigate inductive biases under data imbalance, and construct a calibrated dual-backbone ensemble.
@@ -138,7 +138,7 @@ SwinViT-3D (Ep 150) & SuPreM + weak-class $\gamma_-=2$ + 8-fold TTA & 0.7925 & 0
 The published CT-CLIP and CT-Net baselines reported ranking AUROC without calibrated decision thresholds, which accounts for their unreported F1 metrics. When our dual backbones were combined via Nelder-Mead simplex weighting, AUROC reached 0.8025. Applying per-class threshold calibration boosted macro F1 from 0.4420 to 0.5212 (+17.9\% relative gain).
 
 \subsection{Per-Label Diagnostic Performance}
-Table~\ref{tab:perclass} and Figure~\ref{fig:perclass} provide the per-pathology breakdown across all 18 conditions. 16 of the 18 pathologies exceed the 0.70 clinical acceptability AUROC threshold, with acute abnormalities achieving excellent discrimination: Pericardial effusion (0.892), Pleural effusion (0.879), and Cardiomegaly (0.865).
+Table~\ref{tab:perclass} and Figure~\ref{fig:perclass} provide the per-pathology breakdown across all 18 conditions. 16 of the 18 pathologies exceed the 0.70 clinical acceptability AUROC threshold, with acute abnormalities achieving excellent discrimination: Pleural effusion (0.928), Cardiomegaly (0.896), and Arterial wall calcification (0.871).
 
 \begin{table}[t]
 \centering
@@ -150,26 +150,26 @@ Table~\ref{tab:perclass} and Figure~\ref{fig:perclass} provide the per-pathology
 \toprule
 \textbf{Pathology Label} & \textbf{Prevalence (\%)} & \textbf{Swin AUROC} & \textbf{Swin F1 (0.5)} & \textbf{Ensemble F1 (Opt)} \\
 \midrule
-Medical material & 18.2 & 0.779 & 0.354 & 0.387 \\
-Arterial wall calcification & 28.6 & 0.812 & 0.526 & 0.548 \\
-Cardiomegaly & 22.4 & 0.865 & 0.601 & 0.638 \\
-Pericardial effusion & 1.8 & 0.892 & 0.281 & 0.362 \\
-Coronary artery wall calc. & 26.5 & 0.824 & 0.534 & 0.561 \\
-Hiatal hernia & 4.1 & 0.706 & 0.298 & 0.384 \\
-Lymphadenopathy & 11.7 & 0.791 & 0.392 & 0.435 \\
-Emphysema & 8.9 & 0.828 & 0.441 & 0.487 \\
-Atelectasis & 24.1 & 0.764 & 0.482 & 0.518 \\
-Lung nodule* & 31.8 & 0.663 & 0.589 & 0.645 \\
-Lung opacity & 29.4 & 0.781 & 0.528 & 0.559 \\
-Pulmonary fibrotic sequela* & 14.5 & 0.651 & 0.312 & 0.368 \\
-Consolidation & 12.8 & 0.819 & 0.468 & 0.502 \\
-Bronchiectasis & 7.2 & 0.803 & 0.387 & 0.441 \\
-Interlobular septal thickening & 9.4 & 0.772 & 0.376 & 0.428 \\
-Mosaic attenuation pattern & 3.2 & 0.814 & 0.264 & 0.349 \\
-Pleural effusion & 21.6 & 0.879 & 0.612 & 0.649 \\
-Pneumothorax & 2.1 & 0.822 & 0.294 & 0.378 \\
+Medical material & 10.3 & 0.779 & 0.288 & 0.387 \\
+Arterial wall calcification & 28.5 & 0.871 & 0.606 & 0.704 \\
+Cardiomegaly & 10.7 & 0.896 & 0.414 & 0.558 \\
+Pericardial effusion & 7.4 & 0.837 & 0.304 & 0.442 \\
+Coronary artery wall calc. & 25.2 & 0.870 & 0.581 & 0.648 \\
+Hiatal hernia & 13.7 & 0.706 & 0.288 & 0.365 \\
+Lymphadenopathy & 26.0 & 0.710 & 0.416 & 0.515 \\
+Emphysema & 19.7 & 0.758 & 0.394 & 0.493 \\
+Atelectasis & 23.5 & 0.713 & 0.402 & 0.483 \\
+Lung nodule* & 44.8 & 0.663 & 0.640 & 0.645 \\
+Lung opacity & 39.0 & 0.780 & 0.564 & 0.678 \\
+Pulmonary fibrotic sequela* & 27.3 & 0.651 & 0.465 & 0.473 \\
+Pleural effusion & 12.4 & 0.928 & 0.578 & 0.744 \\
+Mosaic attenuation pattern & 8.3 & 0.848 & 0.343 & 0.464 \\
+Peribronchial thickening & 11.7 & 0.765 & 0.272 & 0.416 \\
+Consolidation & 19.1 & 0.840 & 0.466 & 0.586 \\
+Bronchiectasis & 10.9 & 0.754 & 0.385 & 0.399 \\
+Interlobular septal thickening & 8.2 & 0.839 & 0.304 & 0.384 \\
 \midrule
-\textbf{Macro Average} & \textbf{15.5} & \textbf{0.7925} & \textbf{0.4350} & \textbf{0.5212} \\
+\textbf{Macro Average} & \textbf{19.3} & \textbf{0.789} & \textbf{0.428} & \textbf{0.5212} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -181,15 +181,15 @@ Pneumothorax & 2.1 & 0.822 & 0.294 & 0.378 \\
 \label{fig:perclass}
 \end{figure}
 
-Only two pathologies remain below AUROC 0.70: Lung nodule (0.663) and Pulmonary fibrotic sequelae (0.651). At 2.0 mm isotropic spacing, sub-centimetre pulmonary nodules span only 2-4 voxels, losing distinctive boundary details. Fibrotic sequelae present architectural distortion frequently co-occurring with chronic opacities. Conversely, Pericardial effusion (0.892) and Pleural effusion (0.879) achieve superior ranking accuracy owing to distinct fluid-attenuation boundaries easily detected by volumetric attention.
+Only two pathologies remain below AUROC 0.70: Lung nodule (0.663) and Pulmonary fibrotic sequelae (0.651). At 2.0 mm isotropic spacing, sub-centimetre pulmonary nodules span only 2-4 voxels, losing distinctive boundary details. Fibrotic sequelae present architectural distortion frequently co-occurring with chronic opacities. Conversely, Pleural effusion (0.928) and Cardiomegaly (0.896) achieve superior ranking accuracy owing to distinct fluid-attenuation boundaries and organ-silhouette geometry easily detected by volumetric attention.
 
 \subsection{Computational Complexity and Resource Efficiency}
 To evaluate clinical deployment feasibility, computational overhead was benchmarked on an NVIDIA A100 GPU (80 GB). 3D DenseNet201 comprises 20.0M parameters, requiring 1.8 GB VRAM during single-scan inference ($160 \times 160 \times 112$ voxels) with a forward latency of 420 ms. SwinViT-3D comprises 62.2M parameters, requiring 3.1 GB VRAM and 730 ms latency. Unaugmented single-pass ensemble inference executes in 1.15 s with $<4.9$ GB VRAM. Full 8-fold TTA requires 8.8 s per patient. Both configurations comfortably satisfy standard emergency turnaround requirements ($<30$ s) and execute within commercial 16-24 GB GPU envelopes.
 
 \section{Discussion and Clinical Implications}
-The observed divergence between macro AUROC (0.8025) and macro F1 (0.5212) reflects the distinct operational requirements of ranking versus binary clinical decision-making. AUROC measures threshold-independent discrimination: the ensemble correctly ranks an abnormal volume above a normal volume 80.25\% of the time. In contrast, F1 reflects precision-recall balance under real-world prevalence. For high-prevalence pathologies (e.g., Lung nodule at 31.8\%), false positives are mathematically constrained, yielding high F1 (0.645) despite modest AUROC (0.663). Conversely, rare findings (e.g., Pericardial effusion at 1.8\%) achieve outstanding AUROC (0.892) but require calibrated decision thresholds ($\tau \approx 0.18$) to maintain sensitivity, resulting in lower F1 (0.362) due to unavoidable false positives in low-prevalence regimes.
+The observed divergence between macro AUROC (0.8025) and macro F1 (0.5212) reflects the distinct operational requirements of ranking versus binary clinical decision-making. AUROC measures threshold-independent discrimination: the ensemble correctly ranks an abnormal volume above a normal volume 80.25\% of the time. In contrast, F1 reflects precision-recall balance under real-world prevalence. For high-prevalence pathologies (e.g., Lung nodule at 44.8\%), false positives are mathematically constrained, yielding high F1 (0.645) despite modest AUROC (0.663). Conversely, rare findings (e.g., Pericardial effusion at 7.4\%) achieve strong AUROC (0.837) but require calibrated decision thresholds ($\tau = 0.55$) to maintain sensitivity, resulting in lower F1 (0.442) due to unavoidable false positives in low-prevalence regimes.
 
-From a clinical triage perspective, the system exhibits optimal characteristics: acute life-threatening conditions (pericardial and pleural effusions, pneumothorax, cardiomegaly) exhibit both high AUROC and rapid turnaround. Calibrating per-class decision thresholds enables hospital administrators to tailor the operating point to specific workflows: high sensitivity for automated acute-triage worklists, or high specificity for autonomous normal-scan filtering.
+From a clinical triage perspective, the system exhibits optimal characteristics: acute life-threatening conditions (pericardial and pleural effusions, consolidation, cardiomegaly) exhibit both high AUROC and rapid turnaround. Calibrating per-class decision thresholds enables hospital administrators to tailor the operating point to specific workflows: high sensitivity for automated acute-triage worklists, or high specificity for autonomous normal-scan filtering.
 
 \section{Limitations and Future Work}
 Three principal limitations warrant consideration:
