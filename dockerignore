@@ -1,0 +1,84 @@
+# VLM3D Challenge -- .dockerignore
+# Exclude everything not needed in the Docker build context.
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Logs and errors
+*.log
+*.err
+
+# Jupyter
+*.ipynb
+.ipynb_checkpoints/
+
+# Old/unused model checkpoints -- keep only the two used in Dockerfile
+best_model_checkpoint*.pth
+best_model_swin.pth
+best_model_swin1.pth
+best_model_swin4.pth
+best_model_swin6.pth
+best_model_checkpoint_swin.pth
+best_model_checkpoint_swin1.pth
+best_model_checkpoint_swin4.pth
+best_model_checkpoint_swin6.pth
+best_model_checkpoint_swin_suprem.pth
+
+# NOTE: best_model.pth and best_model_swin_suprem.pth are NOT excluded --
+#       they are required by the Dockerfile COPY instructions.
+
+# Old threshold files -- keep only ensemble_3model
+optimized_thresholds.json
+optimized_thresholds_swin.json
+optimized_thresholds_ensemble.json
+optimized_thresholds_ensemble_suprem.json
+
+# Training and utility scripts (not needed inside container)
+train.py
+data_loader.py
+model.py
+optimize_thresholds.py
+ensemble_models.py
+verify_suprem_weights.py
+diagnose_swin_gradients.py
+check_*.py
+analyze_sample.py
+test_stage3.py
+test_swin_hpc.py
+visualize_slice.py
+plot_*.py
+temp_*.py
+temp_*.txt
+
+# Slurm submission scripts
+submit_*.sh
+monitor_email.sh
+submit_tunnel.sh
+
+# Dataset
+dataset/
+
+# Documents and images
+*.pptx
+*.pdf
+*.docx
+*.png
+
+# Research papers
+extra research papers/
+research paper/
+
+# Local test directories
+test_input/
+test_output/
+
+# Git and IDE
+.git/
+.gitignore
+.vscode/
+*.swp
