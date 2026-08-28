@@ -1,0 +1,63 @@
+# Model weights and checkpoints (large binary files)
+*.pth
+*.pt
+*.bin
+*.onnx
+*.tar.gz
+*.zip
+
+# Python & Environment
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# Tensorboard & logs
+runs/
+*.log
+*.out
+*.err
+slurm-*.out
+
+# Medical Imaging Data
+*.nii
+*.nii.gz
+*.dcm
+data/
+dataset/
+datasets/
+pretrain_weights/
+
+# Temporary and Scratch Files
+temp_*
+*.tmp
+RDGY*.pptx
+*.pptx
+
+# OS-specific
+.DS_Store
+Thumbs.db
+desktop.ini
