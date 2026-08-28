@@ -40,7 +40,7 @@ Multi-label volumetric CT interpretation presents three severe technical hurdles
 \setlength{\itemsep}{1pt}\setlength{\parskip}{0pt}
 \item \textit{Extreme spatial dimensionality}: Processing full 3D CT volumes at native isotropic resolution exceeds standard GPU accelerator memory, requiring careful balancing of spatial resampling, patch sizes, and memory footprints.
 \item \textit{Pathological scale heterogeneity}: The 18 target conditions in the CT-RATE benchmark~\cite{ctrate2024} span multiple orders of spatial magnitude, ranging from sub-centimetre focal nodules to diffuse interstitial opacities and organ-level cardiac enlargement.
-\item \textit{Pervasive label co-occurrence and imbalance}: Positive class prevalence ranges from under 8\% (e.g., pericardial effusion, mosaic attenuation) to over 40\% (e.g., lung nodule, lung opacity), producing acute gradient starvation for low-prevalence findings when trained under standard binary cross-entropy.
+\item \textit{Pervasive label co-occurrence and imbalance}: Positive class prevalence ranges from 7.4\% (pericardial effusion) to 44.8\% (lung nodule; lung opacity at 39.0\%), producing acute gradient starvation for low-prevalence findings when trained under standard binary cross-entropy.
 \end{enumerate}
 
 In this paper, we describe and evaluate an end-to-end multi-label 3D CT anomaly detection system developed for the VLM3D Challenge~\cite{vlm3d2026} on the CT-RATE dataset (11,404 training and 3,039 validation volumes). We present a principled progression from shallow 3D CNNs to hierarchical vision transformers, investigate inductive biases under data imbalance, and construct a calibrated dual-backbone ensemble.
