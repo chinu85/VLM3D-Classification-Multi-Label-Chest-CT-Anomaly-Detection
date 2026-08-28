@@ -28,8 +28,8 @@ CLASS_NAMES = [
     "Pericardial effusion", "Coronary artery wall calcification", "Hiatal hernia",
     "Lymphadenopathy", "Emphysema", "Atelectasis", "Lung nodule",
     "Lung opacity", "Pulmonary fibrotic sequela", "Pleural effusion",
-    "Mosaic attenuation pattern", "Peribronchial thickening", "Air trapping",
-    "Bronchiectasis", "Pleural thickening",
+    "Mosaic attenuation pattern", "Peribronchial thickening", "Consolidation",
+    "Bronchiectasis", "Interlobular septal thickening",
 ]
 
 # 8-fold TTA: dim 2=D, 3=H, 4=W in a (B,1,D,H,W) batch tensor.
